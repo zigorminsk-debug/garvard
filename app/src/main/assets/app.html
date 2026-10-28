@@ -261,11 +261,11 @@
 <main id="app"></main>
 
 <nav id="nav">
-  <button data-tab="home" class="active" onclick="go('home')"><span class="ico">▤</span>Курс</button>
-  <button data-tab="dilemmas" onclick="go('dilemmas')"><span class="ico">⚖</span>Дилеммы</button>
-  <button data-tab="philosophers" onclick="go('philosophers')"><span class="ico">☗</span>Мыслители</button>
-  <button data-tab="glossary" onclick="go('glossary')"><span class="ico">✎</span>Словарь</button>
-  <button data-tab="about" onclick="go('about')"><span class="ico">ⓘ</span>О курсе</button>
+  <button data-tab="home" class="active" onclick="tabTap('home')"><span class="ico">▤</span>Курс</button>
+  <button data-tab="dilemmas" onclick="tabTap('dilemmas')"><span class="ico">⚖</span>Дилеммы</button>
+  <button data-tab="philosophers" onclick="tabTap('philosophers')"><span class="ico">☗</span>Мыслители</button>
+  <button data-tab="glossary" onclick="tabTap('glossary')"><span class="ico">✎</span>Словарь</button>
+  <button data-tab="about" onclick="tabTap('about')"><span class="ico">ⓘ</span>О курсе</button>
 </nav>
 
 <div class="toast" id="toast"></div>
@@ -278,26 +278,77 @@ var DATA = __COURSE_DATA__;
 var STORE_KEY = 'garvard_justice_state_v1';
 var state = load();
 function blankState(){
-  return {read:[], quizzes:{}, dilemmas:{}, theme:null, last:null, lastView:null, bookmarks:[]};
+  return {read:[], quizzes:{}, dilemmas:{}, theme:null, last:null, lastView:null,
+          bookmarks:[], autoResume:false};
+}
+function mergeState(s, raw){
+  try{
+    var parsed = JSON.parse(raw) || {};
+    Object.keys(parsed).forEach(function(k){ s[k] = parsed[k]; });
+  }catch(e){}
+  return s;
 }
 function load(){
   var s = blankState();
-  try{
-    var raw = localStorage.getItem(STORE_KEY);
-    if(raw){
-      var parsed = JSON.parse(raw) || {};
-      Object.keys(parsed).forEach(function(k){ s[k] = parsed[k]; });
-    }
-  }catch(e){}
-  if(!s.read) s.read = [];
+  var raw = null;
+  try{ raw = localStorage.getItem(STORE_KEY); }catch(e){}
+  // Резервное хранилище Android (SharedPreferences) — на случай, если WebView потерял localStorage
+  if(!raw && window.Android && Android.loadState){
+    try{ raw = Android.loadState() || null; }catch(e){}
+  }
+  if(raw) mergeState(s, raw); else initDailyStamp(s);
+  if(!s.read) s.read = Array.isArray(s.read) ? s.read : [];
   if(!s.quizzes) s.quizzes = {};
   if(!s.dilemmas) s.dilemmas = {};
-  if(!s.bookmarks) s.bookmarks = [];
+  if(!s.bookmarks) s.bookmarks = Array.isArray(s.bookmarks) ? s.bookmarks : [];
   return s;
 }
-function save(){
-  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+function initDailyStamp(s){ if(!s.firstOpen) s.firstOpen = Date.now(); }
+
+var __nativeTimer = null;
+function pushNative(json){
+  if(!(window.Android && Android.saveState)) return;
+  try{ Android.saveState(json); }catch(e){}
 }
+/** Сохраняет состояние сразу в localStorage и (с небольшой задержкой) в SharedPreferences. */
+function save(){
+  var json = '';
+  try{
+    json = JSON.stringify(state);
+    localStorage.setItem(STORE_KEY, json);
+  }catch(e){}
+  if(window.Android && Android.saveState){
+    if(__nativeTimer) clearTimeout(__nativeTimer);
+    __nativeTimer = setTimeout(function(){
+      __nativeTimer = null;
+      pushNative(json || JSON.stringify(state));
+    }, 600);
+  }
+}
+/** Немедленная запись в оба хранилища — при сворачивании и выходе. */
+function flushState(){
+  rememberScroll();
+  var json = '';
+  try{
+    json = JSON.stringify(state);
+    localStorage.setItem(STORE_KEY, json);
+  }catch(e){}
+  if(__nativeTimer){ clearTimeout(__nativeTimer); __nativeTimer = null; }
+  pushNative(json || JSON.stringify(state));
+}
+
+/**
+ * Вызывается из Android при сворачивании/уходе приложения в фон:
+ * фиксирует «авто-закладку» на текущем месте чтения.
+ */
+function onAppPause(){
+  if(current === 'lecture' && state.last && state.last.lectureId){
+    state.autoResume = true;
+  }
+  flushState();
+  return 'ok';
+}
+window.onAppPause = onAppPause;
 
 /* ---------- Закладки и «продолжить с места» ---------- */
 function currentScroll(){ return Math.round(window.scrollY || window.pageYOffset || 0); }
@@ -311,14 +362,19 @@ function saveLast(view, lectureId, scrollY){
   var ts = Date.now();
   state.lastView = {view: view, lectureId: lectureId || null, scrollY: y, ts: ts};
   if(view === 'lecture' && lectureId){
+    // Читаем лекцию — авто-закладка активна, при возврате в «Курс» откроем это место
     state.last = {lectureId: lectureId, scrollY: y, ts: ts};
+    state.autoResume = true;
   }
   save();
 }
 function rememberScroll(){
   var y = currentScroll();
   if(state.lastView) state.lastView.scrollY = y;
-  if(current === 'lecture' && state.last) state.last.scrollY = y;
+  if(current === 'lecture' && state.last){
+    state.last.scrollY = y;
+    state.last.ts = Date.now();
+  }
   save();
 }
 function lastLecture(){
@@ -456,6 +512,11 @@ function toggleTheme(){
 var current = 'home';
 function go(tab, opts){
   opts = opts || {};
+  // Вкладка «Курс» возвращает к месту, где остановилось чтение (авто-закладка)
+  if(tab === 'home' && !opts.noResume && !opts.silent && state.autoResume && lastLecture()){
+    resumeLast(false);
+    return;
+  }
   current = tab;
   document.querySelectorAll('nav button').forEach(function(b){
     b.classList.toggle('active', b.dataset.tab === tab);
@@ -474,6 +535,23 @@ function go(tab, opts){
 var viewStack = [];
 function pushView(fn){ viewStack.push(fn); }
 function back(){ viewStack.pop(); var fn = viewStack[viewStack.length-1]; if(fn) fn(); else go(current); }
+
+/** Пользователь специально открыл список лекций — авто-возврат больше не мешает. */
+function showCourseList(){
+  if(current === 'lecture') rememberScroll();
+  state.autoResume = false;
+  save();
+  go('home', {noResume: true});
+}
+
+/** Обработчик нижней навигации. */
+function tabTap(tab){
+  if(tab === 'home'){
+    if(current === 'lecture'){ showCourseList(); return; }
+    if(state.autoResume && lastLecture()){ resumeLast(true); return; }
+  }
+  go(tab);
+}
 
 function openLecture(id, opts){
   opts = opts || {};
@@ -515,7 +593,7 @@ function renderHome(){
   if(lastLec){
     var pos = Math.round((state.last.scrollY || 0));
     html += '<div class="card resume" onclick="resumeLast()">';
-    html += '<div class="eyebrow">Вы остановились здесь</div>';
+    html += '<div class="eyebrow">Авто-закладка · Вы остановились здесь</div>';
     html += '<div class="resume-row">';
     html += '<div class="num">' + lastLec.id + '</div>';
     html += '<div style="flex:1;min-width:0">';
@@ -581,14 +659,18 @@ function continueReading(){
 }
 
 /** Возвращает на лекцию и место в тексте, где пользователь остановился. */
-function resumeLast(){
+function resumeLast(showToast){
   var last = lastLecture();
   if(!last){
     continueReading();
     return;
   }
   openLecture(last.id, {scrollY: state.last.scrollY || 0});
-  toast('Продолжаем: лекция ' + last.id);
+  if(showToast !== false){
+    var y = state.last.scrollY || 0;
+    toast('Продолжаем с места остановки: лекция ' + last.id +
+          (y > 0 ? ', ~' + Math.max(1, Math.round(y / 40)) + '-й экран' : ''));
+  }
 }
 
 /* ==================== Экран: Лекция ==================== */
@@ -881,18 +963,29 @@ function resetProgress(){
 
 /* ==================== Старт ==================== */
 document.getElementById('backBtn').addEventListener('click', function(){
-  if(viewStack.length > 1){ back(); } else { go('home'); }
+  if(current === 'lecture'){ showCourseList(); return; }
+  if(viewStack.length > 1){ back(); } else { go('home', {noResume: true}); }
 });
 applyTheme();
 
-/* Запуск приложения: открываем тот экран и то место, где пользователь остановился */
+/* Запуск приложения: открываем ровно то место, где пользователь остановился */
 (function boot(){
   var lv = state.lastView;
+  var last = lastLecture();
   var scrollSave = (lv && lv.scrollY) ? lv.scrollY : 0;
+
+  // 1. Прошлый раз читали лекцию — открываем её на том же месте
   if(lv && lv.view === 'lecture' && lv.lectureId && lectureById(lv.lectureId)){
+    state.autoResume = true;
     openLecture(lv.lectureId, {scrollY: scrollSave, silent: true});
     return;
   }
+  // 2. Прошлый раз были в другом разделе — но есть авто-закладка в лекции
+  if(last && state.autoResume && lv && ['dilemmas','philosophers','glossary','about'].indexOf(lv.view) >= 0){
+    openLecture(last.id, {scrollY: state.last.scrollY || 0, silent: true});
+    return;
+  }
+  // 3. Прошлый раз были на другом экране — возвращаемся туда
   if(lv && ['dilemmas','philosophers','glossary','about'].indexOf(lv.view) >= 0){
     go(lv.view, {silent: true});
     if(scrollSave > 0) setTimeout(function(){ window.scrollTo(0, scrollSave); }, 90);
@@ -901,19 +994,26 @@ applyTheme();
   go('home', {silent: true});
 })();
 
-/* Сохраняем место чтения при прокрутке и при уходе приложения в фон */
+/* Авто-закладка: фиксируем место чтения при прокрутке, свайпе, уходе в фон и выходе */
 var __scrollTimer = null;
-window.addEventListener('scroll', function(){
+function scheduleScrollSave(){
   if(__scrollTimer) return;
   __scrollTimer = setTimeout(function(){
     __scrollTimer = null;
     rememberScroll();
-  }, 400);
-});
-window.addEventListener('pagehide', rememberScroll);
+  }, 250);
+}
+window.addEventListener('scroll', scheduleScrollSave, {passive: true});
+window.addEventListener('scrollend', rememberScroll);
+window.addEventListener('pagehide', flushState);
+window.addEventListener('blur', flushState);
 document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState === 'hidden') rememberScroll();
+  if(document.visibilityState === 'hidden') onAppPause();
 });
+/* Android может не прислать pagehide при выгрузке — страхуемся периодической записью */
+setInterval(function(){
+  if(current === 'lecture') rememberScroll();
+}, 5000);
 </script>
 </body>
 </html>

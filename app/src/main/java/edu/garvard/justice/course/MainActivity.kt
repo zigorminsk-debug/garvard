@@ -254,6 +254,15 @@ class MainActivity : AppCompatActivity() {
         return digits.toIntOrNull() ?: 0
     }
 
+    override fun onPause() {
+        // Сворачивание / уход в фон: просим интерфейс зафиксировать авто-закладку
+        webView.evaluateJavascript(
+            "(function(){ if (window.onAppPause) { window.onAppPause(); return 'saved'; } return 'none'; })()",
+            null
+        )
+        super.onPause()
+    }
+
     override fun onDestroy() {
         executor.shutdownNow()
         webView.destroy()
@@ -274,6 +283,16 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun signature(): String = BuildConfig.SIGNING_KEY_SHA256
+
+        /** Резервное хранилище прогресса и закладок (на случай очистки localStorage в WebView). */
+        @JavascriptInterface
+        fun saveState(json: String) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(KEY_STATE, json).apply()
+        }
+
+        @JavascriptInterface
+        fun loadState(): String =
+            getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_STATE, "") ?: ""
 
         /** Синхронизирует системные панели со светлой/тёмной темой интерфейса. */
         @JavascriptInterface
@@ -324,5 +343,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val APK_FILE_NAME = "garvard-justice-course.apk"
+        private const val PREFS = "garvard_state"
+        private const val KEY_STATE = "state"
     }
 }
