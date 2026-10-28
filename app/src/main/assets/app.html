@@ -236,27 +236,45 @@ function esc(s){
     .replace(/"/g,'&quot;');
 }
 function md(s){
-  // Мини-разметка: **жирный**, *курсив*, `код`, абзацы, списки
+  // Мини-разметка: **жирный**, *курсив*, `код`, абзацы, маркированные и нумерованные списки
   var out = esc(s);
   out = out.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
   out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
-  var blocks = out.split(/\n{2,}/);
-  var html = blocks.map(function(b){
-    b = b.trim();
-    if(!b) return '';
-    var lines = b.split('\n');
-    var isList = lines.every(function(l){ return /^\s*[-•]\s+/.test(l); });
-    var isNum  = lines.every(function(l){ return /^\s*\d+\.\s+/.test(l); });
-    if(isList){
-      return '<ul>' + lines.map(function(l){ return '<li>' + l.replace(/^\s*[-•]\s+/,'') + '</li>'; }).join('') + '</ul>';
+
+  function renderBlock(block){
+    var lines = block.split('\n');
+    var html = '', listType = null, items = [], para = [];
+    function flushList(){
+      if(!listType) return;
+      html += '<' + listType + '>' + items.map(function(i){ return '<li>' + i + '</li>'; }).join('') + '</' + listType + '>';
+      listType = null; items = [];
     }
-    if(isNum){
-      return '<ol>' + lines.map(function(l){ return '<li>' + l.replace(/^\s*\d+\.\s+/,'') + '</li>'; }).join('') + '</ol>';
+    function flushPara(){
+      if(!para.length) return;
+      html += '<p>' + para.join('<br>') + '</p>';
+      para = [];
     }
-    return '<p>' + lines.join('<br>') + '</p>';
-  }).join('');
-  return html;
+    lines.forEach(function(line){
+      var bullet = line.match(/^\s*[-•]\s+(.*)$/);
+      var number = line.match(/^\s*\d+\.\s+(.*)$/);
+      if(bullet || number){
+        flushPara();
+        var type = bullet ? 'ul' : 'ol';
+        if(listType && listType !== type) flushList();
+        listType = type;
+        items.push(bullet ? bullet[1] : number[1]);
+      } else {
+        flushList();
+        para.push(line);
+      }
+    });
+    flushPara();
+    flushList();
+    return html;
+  }
+
+  return out.split(/\n{2,}/).map(function(b){ return b.trim() ? renderBlock(b.trim()) : ''; }).join('');
 }
 function lectureById(id){
   for(var i=0;i<DATA.lectures.length;i++){ if(DATA.lectures[i].id===id) return DATA.lectures[i]; }
