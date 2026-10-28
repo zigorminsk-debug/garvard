@@ -3,6 +3,7 @@
     <color name="brand_crimson">#A51C30</color>
     <color name="brand_crimson_dark">#7D1424</color>
     <color name="brand_background">#F6F3EE</color>
+    <color name="brand_status_dark">#180408</color>
     <color name="brand_gold">#B08D3F</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

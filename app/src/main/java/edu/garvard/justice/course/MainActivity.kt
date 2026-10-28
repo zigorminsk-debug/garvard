@@ -58,13 +58,13 @@ class MainActivity : AppCompatActivity() {
             ): Boolean {
                 val target = request?.url?.toString() ?: return false
                 if (target.startsWith("https://appassets") || target.startsWith("file://")) return false
-                // Внешние ссылки (например, страница релиза) открываем в браузере
-                return try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
-                    true
-                } catch (e: Exception) {
-                    false
+                if (target.startsWith("mailto:") || target.startsWith("tel:") ||
+                    target.startsWith("https://") || target.startsWith("http://")
+                ) {
+                    openExternally(target)
+                    return true
                 }
+                return false
             }
         }
 
@@ -93,6 +93,23 @@ class MainActivity : AppCompatActivity() {
             "UTF-8",
             null
         )
+    }
+
+    /** Открываем ссылки, почту и телефон во внешних приложениях. */
+    private fun openExternally(target: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            val hint = when {
+                target.startsWith("mailto:") -> "Не найдено почтовое приложение"
+                target.startsWith("tel:") -> "Не найдено приложение для звонков"
+                else -> "Не найдено приложение для открытия ссылки"
+            }
+            toast(hint)
+        }
     }
 
     private fun toast(msg: String) = runOnUiThread {
@@ -257,6 +274,25 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun signature(): String = BuildConfig.SIGNING_KEY_SHA256
+
+        /** Синхронизирует системные панели со светлой/тёмной темой интерфейса. */
+        @JavascriptInterface
+        fun setDark(enabled: Boolean) {
+            runOnUiThread {
+                window.statusBarColor = getColor(
+                    if (enabled) R.color.brand_status_dark else R.color.brand_crimson_dark
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    window.decorView.systemUiVisibility = if (enabled) {
+                        window.decorView.systemUiVisibility and
+                            android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+                    } else {
+                        window.decorView.systemUiVisibility or
+                            android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    }
+                }
+            }
+        }
 
         @JavascriptInterface
         fun checkUpdate() {

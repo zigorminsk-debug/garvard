@@ -2,4 +2,7 @@
 <resources>
     <string name="app_name">Справедливость</string>
     <string name="app_full_name">Гарвард: Справедливость — курс лекций</string>
+    <string name="developer_name">Захаревич Игорь</string>
+    <string name="developer_email">ziv@csl.by</string>
+    <string name="developer_phone">+375293371412</string>
 </resources>
