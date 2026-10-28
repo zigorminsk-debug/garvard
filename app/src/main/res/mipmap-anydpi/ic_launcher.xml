@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Иконка для Android 7.x (ниже API 26), где адаптивные иконки ещё не поддерживаются -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#A51C30"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#7D1424"
+        android:pathData="M0,84h108v24h-108z" />
+    <path
+        android:fillColor="#D8B46A"
+        android:pathData="M30,40h48v3h-48z" />
+    <path
+        android:fillColor="#D8B46A"
+        android:pathData="M28,47h14l-7,9z" />
+    <path
+        android:fillColor="#D8B46A"
+        android:pathData="M66,47h14l-7,9z" />
+    <path
+        android:strokeColor="#D8B46A"
+        android:strokeWidth="1.6"
+        android:pathData="M35,47v6 M73,47v6" />
+    <path
+        android:fillColor="#F6F3EE"
+        android:pathData="M50,32h8v40h-8z" />
+    <path
+        android:fillColor="#F6F3EE"
+        android:pathData="M43,26h22v6h-22z" />
+    <path
+        android:fillColor="#F6F3EE"
+        android:pathData="M45,21h18v5h-18z" />
+    <path
+        android:fillColor="#F6F3EE"
+        android:pathData="M42,72h24v5h-24z" />
+    <path
+        android:fillColor="#F6F3EE"
+        android:pathData="M38,77h32v6h-32z" />
+</vector>
