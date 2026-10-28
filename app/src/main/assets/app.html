@@ -200,6 +200,35 @@
   .contact span.ic{font-size:17px;line-height:1;}
   .contact:active{background:var(--crimson-soft);}
   .contact small{display:block;font-weight:400;font-size:12px;color:var(--muted);margin-top:2px;}
+  /* ---------- Закладки ---------- */
+  .fab{
+    position:fixed;right:16px;bottom:88px;z-index:60;
+    width:52px;height:52px;border-radius:50%;border:1.5px solid var(--line);
+    background:var(--card);color:var(--crimson);font-size:21px;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 18px rgba(0,0,0,.18);
+    opacity:.9;transition:transform .15s, background .2s;
+  }
+  .fab:active{transform:scale(.93);}
+  .fab.active{background:var(--crimson);border-color:var(--crimson);color:#fff;opacity:1;}
+  body.dark .fab{box-shadow:0 6px 18px rgba(0,0,0,.55);}
+  .resume{cursor:pointer;border-color:var(--crimson);}
+  .resume-row{display:flex;align-items:center;gap:12px;}
+  .resume-row .num{
+    width:42px;height:42px;border-radius:12px;flex:0 0 auto;
+    background:var(--crimson);color:#fff;display:flex;align-items:center;justify-content:center;
+    font-family:Georgia,serif;font-weight:700;font-size:17px;
+  }
+  .resume-row .t{font-family:Georgia,serif;font-size:15.5px;font-weight:600;line-height:1.3;}
+  .resume-row .d{font-size:12.5px;color:var(--muted);margin-top:2px;}
+  .resume-go{color:var(--crimson);font-size:14px;flex:0 0 auto;}
+  .lecture.bookmark{border-color:var(--crimson);}
+  .bm-mark{color:var(--crimson);font-size:15px;align-self:center;margin-left:6px;}
+  .bm-del{
+    background:transparent;border:0;color:var(--muted);font-size:22px;line-height:1;
+    padding:4px 8px;align-self:center;flex:0 0 auto;
+  }
+  .bm-del:active{color:var(--crimson);}
   .toast{
     position:fixed;left:50%;bottom:92px;transform:translateX(-50%);
     background:#26231f;color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;
@@ -248,15 +277,96 @@ var DATA = __COURSE_DATA__;
 /* ==================== Состояние ==================== */
 var STORE_KEY = 'garvard_justice_state_v1';
 var state = load();
+function blankState(){
+  return {read:[], quizzes:{}, dilemmas:{}, theme:null, last:null, lastView:null, bookmarks:[]};
+}
 function load(){
+  var s = blankState();
   try{
     var raw = localStorage.getItem(STORE_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw){
+      var parsed = JSON.parse(raw) || {};
+      Object.keys(parsed).forEach(function(k){ s[k] = parsed[k]; });
+    }
   }catch(e){}
-  return {read:[], quizzes:{}, dilemmas:{}, theme:null};
+  if(!s.read) s.read = [];
+  if(!s.quizzes) s.quizzes = {};
+  if(!s.dilemmas) s.dilemmas = {};
+  if(!s.bookmarks) s.bookmarks = [];
+  return s;
 }
 function save(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+/* ---------- Закладки и «продолжить с места» ---------- */
+function currentScroll(){ return Math.round(window.scrollY || window.pageYOffset || 0); }
+
+/**
+ * state.lastView — экран, на котором пользователь был в прошлый раз (для запуска приложения);
+ * state.last     — последняя лекция и место в тексте (для кнопки «Продолжить» и карточки-закладки).
+ */
+function saveLast(view, lectureId, scrollY){
+  var y = (typeof scrollY === 'number') ? scrollY : currentScroll();
+  var ts = Date.now();
+  state.lastView = {view: view, lectureId: lectureId || null, scrollY: y, ts: ts};
+  if(view === 'lecture' && lectureId){
+    state.last = {lectureId: lectureId, scrollY: y, ts: ts};
+  }
+  save();
+}
+function rememberScroll(){
+  var y = currentScroll();
+  if(state.lastView) state.lastView.scrollY = y;
+  if(current === 'lecture' && state.last) state.last.scrollY = y;
+  save();
+}
+function lastLecture(){
+  if(state.last && state.last.lectureId) return lectureById(state.last.lectureId);
+  return null;
+}
+function bookmarkFor(lectureId){
+  for(var i=0;i<state.bookmarks.length;i++){
+    if(state.bookmarks[i].lectureId === lectureId) return state.bookmarks[i];
+  }
+  return null;
+}
+function sortedBookmarks(){
+  return state.bookmarks.slice().sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+}
+function toggleBookmark(lectureId){
+  var lec = lectureById(lectureId);
+  if(!lec) return;
+  var existing = bookmarkFor(lectureId);
+  if(existing){
+    state.bookmarks = state.bookmarks.filter(function(b){ return b.lectureId !== lectureId; });
+    save();
+    toast('Закладка удалена');
+  }else{
+    state.bookmarks.push({
+      lectureId: lectureId,
+      title: lec.title,
+      scrollY: currentScroll(),
+      ts: Date.now()
+    });
+    save();
+    toast('Закладка сохранена — вернётесь на это место');
+  }
+  updateBookmarkButton(lec);
+}
+function removeBookmark(ev, lectureId){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  state.bookmarks = state.bookmarks.filter(function(b){ return b.lectureId !== lectureId; });
+  save();
+  toast('Закладка удалена');
+  renderHome();
+}
+function updateBookmarkButton(lec){
+  var btn = document.getElementById('bmBtn');
+  if(!btn) return;
+  var saved = bookmarkFor(lec.id);
+  btn.classList.toggle('active', !!saved);
+  btn.title = saved ? 'Закладка сохранена — нажмите, чтобы убрать' : 'Поставить закладку на это место';
 }
 
 /* ==================== Утилиты ==================== */
@@ -344,7 +454,8 @@ function toggleTheme(){
 
 /* ==================== Роутинг ==================== */
 var current = 'home';
-function go(tab){
+function go(tab, opts){
+  opts = opts || {};
   current = tab;
   document.querySelectorAll('nav button').forEach(function(b){
     b.classList.toggle('active', b.dataset.tab === tab);
@@ -352,25 +463,33 @@ function go(tab){
   document.getElementById('backBtn').classList.add('hidden');
   document.getElementById('hTitle').textContent = 'Гарвард: Справедливость';
   document.getElementById('hSub').textContent = 'Курс лекций · 12 лекций';
-  window.scrollTo(0,0);
+  if(!opts.keepScroll) window.scrollTo(0,0);
   if(tab==='home') renderHome();
   else if(tab==='dilemmas') renderDilemmas();
   else if(tab==='philosophers') renderPhilosophers();
   else if(tab==='glossary') renderGlossary();
   else if(tab==='about') renderAbout();
+  if(!opts.silent) saveLast(tab, null, 0);
 }
 var viewStack = [];
 function pushView(fn){ viewStack.push(fn); }
 function back(){ viewStack.pop(); var fn = viewStack[viewStack.length-1]; if(fn) fn(); else go(current); }
 
-function openLecture(id){
+function openLecture(id, opts){
+  opts = opts || {};
   var lec = lectureById(id);
   if(!lec) return;
+  current = 'lecture';
   document.getElementById('backBtn').classList.remove('hidden');
   document.getElementById('hSub').textContent = lec.module;
   document.getElementById('hTitle').textContent = 'Лекция ' + lec.id;
   window.scrollTo(0,0);
   renderLecture(lec);
+  var target = (typeof opts.scrollY === 'number') ? opts.scrollY : 0;
+  if(target > 0){
+    setTimeout(function(){ window.scrollTo(0, target); }, 90);
+  }
+  if(!opts.silent) saveLast('lecture', lec.id, target);
 }
 
 /* ==================== Экран: Главная ==================== */
@@ -391,6 +510,39 @@ function renderHome(){
   html += '<button class="btn wide" onclick="continueReading()">' + (totalRead()===0 ? 'Начать курс' : 'Продолжить чтение') + '</button>';
   html += '</div>';
 
+  // Где остановилось изучение
+  var lastLec = lastLecture();
+  if(lastLec){
+    var pos = Math.round((state.last.scrollY || 0));
+    html += '<div class="card resume" onclick="resumeLast()">';
+    html += '<div class="eyebrow">Вы остановились здесь</div>';
+    html += '<div class="resume-row">';
+    html += '<div class="num">' + lastLec.id + '</div>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div class="t">' + esc(lastLec.title) + '</div>';
+    html += '<div class="d">' + (pos > 0 ? 'место в тексте: ~' + Math.max(1, Math.round(pos / 40)) + '-й экран' : 'начало лекции') + '</div>';
+    html += '</div>';
+    html += '<div class="resume-go">▶</div>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  // Закладки
+  var bms = sortedBookmarks();
+  if(bms.length){
+    html += '<div class="eyebrow" style="margin:20px 4px 9px">Закладки · ' + bms.length + '</div>';
+    bms.forEach(function(b){
+      var l = lectureById(b.lectureId);
+      if(!l) return;
+      html += '<div class="lecture bookmark" onclick="openLecture(' + l.id + ',{scrollY:' + (b.scrollY||0) + '})">';
+      html += '<div class="num">' + l.id + '</div>';
+      html += '<div style="flex:1;min-width:0"><div class="t">' + esc(l.title) + '</div>';
+      html += '<div class="d">закладка · ' + (b.scrollY > 0 ? '~' + Math.max(1, Math.round(b.scrollY / 40)) + '-й экран' : 'начало') + '</div></div>';
+      html += '<button class="bm-del" onclick="removeBookmark(event,' + l.id + ')" title="Удалить закладку">×</button>';
+      html += '</div>';
+    });
+  }
+
   // Модули
   var modules = [];
   DATA.lectures.forEach(function(l){
@@ -407,6 +559,7 @@ function renderHome(){
       html += '<div style="flex:1"><div class="t">' + esc(l.title) + '</div>';
       html += '<div class="d">' + esc(l.subtitle) + '</div>';
       html += '<div class="d" style="margin-top:5px;color:var(--crimson)">' + esc(l.philosophers.join(' · ')) + '</div></div>';
+      if(bookmarkFor(l.id)) html += '<div class="bm-mark" title="Закладка">🔖</div>';
       if(done) html += '<div class="done">✓</div>';
       html += '</div>';
     });
@@ -418,11 +571,24 @@ function renderHome(){
 }
 
 function continueReading(){
+  var last = lastLecture();
+  if(last) return resumeLast();
   for(var i=0;i<DATA.lectures.length;i++){
     if(state.read.indexOf(DATA.lectures[i].id) < 0) return openLecture(DATA.lectures[i].id);
   }
   toast('Все лекции прочитаны. Отличная работа!');
   openLecture(DATA.lectures[0].id);
+}
+
+/** Возвращает на лекцию и место в тексте, где пользователь остановился. */
+function resumeLast(){
+  var last = lastLecture();
+  if(!last){
+    continueReading();
+    return;
+  }
+  openLecture(last.id, {scrollY: state.last.scrollY || 0});
+  toast('Продолжаем: лекция ' + last.id);
 }
 
 /* ==================== Экран: Лекция ==================== */
@@ -470,7 +636,9 @@ function renderLecture(lec){
   });
 
   html += '<button class="btn wide" id="doneBtn" onclick="markRead(' + lec.id + ')">Отметить лекцию прочитанной</button>';
+  html += '<div style="height:64px"></div>';
   html += '</article>';
+  html += '<button class="fab' + (bookmarkFor(lec.id) ? ' active' : '') + '" id="bmBtn" onclick="toggleBookmark(' + lec.id + ')" title="Закладка">🔖</button>';
 
   var app = document.getElementById('app');
   app.innerHTML = html;
@@ -716,7 +884,36 @@ document.getElementById('backBtn').addEventListener('click', function(){
   if(viewStack.length > 1){ back(); } else { go('home'); }
 });
 applyTheme();
-go('home');
+
+/* Запуск приложения: открываем тот экран и то место, где пользователь остановился */
+(function boot(){
+  var lv = state.lastView;
+  var scrollSave = (lv && lv.scrollY) ? lv.scrollY : 0;
+  if(lv && lv.view === 'lecture' && lv.lectureId && lectureById(lv.lectureId)){
+    openLecture(lv.lectureId, {scrollY: scrollSave, silent: true});
+    return;
+  }
+  if(lv && ['dilemmas','philosophers','glossary','about'].indexOf(lv.view) >= 0){
+    go(lv.view, {silent: true});
+    if(scrollSave > 0) setTimeout(function(){ window.scrollTo(0, scrollSave); }, 90);
+    return;
+  }
+  go('home', {silent: true});
+})();
+
+/* Сохраняем место чтения при прокрутке и при уходе приложения в фон */
+var __scrollTimer = null;
+window.addEventListener('scroll', function(){
+  if(__scrollTimer) return;
+  __scrollTimer = setTimeout(function(){
+    __scrollTimer = null;
+    rememberScroll();
+  }, 400);
+});
+window.addEventListener('pagehide', rememberScroll);
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'hidden') rememberScroll();
+});
 </script>
 </body>
 </html>
