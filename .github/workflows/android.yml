@@ -1,0 +1,151 @@
+name: Android · Сборка и релиз APK
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERSION_NAME: 1.0.${{ github.run_number }}
+  VERSION_CODE: ${{ github.run_number }}
+  APP_FILE: garvard-justice-course.apk
+  # SHA-256 отпечаток постоянного ключа подписи (signing/garvard-release-key.jks)
+  EXPECTED_CERT_SHA256: "14:6C:D7:AF:A4:35:F8:E9:3C:05:EA:1F:92:3F:DC:F1:14:05:31:BF:9F:A8:A5:DA:68:D6:74:7F:8A:E1:94:D8"
+
+jobs:
+  build:
+    name: Сборка подписанного APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Клонирование репозитория
+        uses: actions/checkout@v4
+
+      - name: Установка JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Кэш и настройка Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK (предустановлен на runner)
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "Android SDK: $SDK"
+          ls "$SDK" || true
+
+          SDKMANAGER=$(find "$SDK" -type f -name sdkmanager 2>/dev/null | head -n 1 || true)
+          if [ -n "$SDKMANAGER" ]; then
+            echo "sdkmanager: $SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 \
+              || echo "::warning::Не удалось доустановить компоненты SDK — используем предустановленные"
+          else
+            echo "::warning::sdkmanager не найден, используем предустановленный SDK"
+          fi
+
+          echo "Платформы:"; ls "$SDK/platforms" || true
+          echo "Build-tools:"; ls "$SDK/build-tools" || true
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: Проверка целостности курса (unit-тесты)
+        run: ./gradlew --no-daemon testReleaseUnitTest
+
+      - name: Сборка release APK с постоянным ключом
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Проверка подписи APK
+        run: |
+          set -euo pipefail
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          echo "Собран файл: $APK"
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          echo "apksigner: $APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signature.txt
+
+          # Приводим отпечатки к единому виду: без двоеточий, в верхнем регистре
+          EXPECTED=$(echo "$EXPECTED_CERT_SHA256" | tr -d ':' | tr 'a-f' 'A-F')
+          ACTUAL=$(keytool -printcert -jarfile "$APK" \
+            | grep -i 'SHA256:' | head -n 1 | sed 's/.*SHA256: *//' \
+            | tr -d ':' | tr -d ' ' | tr 'a-f' 'A-F')
+
+          echo "Ожидаемый SHA-256: $EXPECTED"
+          echo "Фактический SHA-256: $ACTUAL"
+
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Отпечаток сертификата не совпадает с постоянным ключом проекта!"
+            exit 1
+          fi
+          echo "✅ APK подписан постоянным ключом проекта"
+
+      - name: Переименование и подготовка артефактов
+        run: |
+          cp app/build/outputs/apk/release/*.apk "$APP_FILE"
+          cp app/build/outputs/apk/release/*.apk "garvard-justice-course-${VERSION_NAME}.apk"
+          ls -lh *.apk
+          sha256sum "$APP_FILE" | tee "$APP_FILE.sha256"
+          {
+            echo "### 📱 Гарвард: Справедливость — $VERSION_NAME"
+            echo ""
+            echo "| Параметр | Значение |"
+            echo "| --- | --- |"
+            echo "| versionName | $VERSION_NAME |"
+            echo "| versionCode | $VERSION_CODE |"
+            echo "| Подпись | постоянный ключ проекта (SHA-256 $EXPECTED_CERT_SHA256) |"
+            echo "| Размер | $(du -h "$APP_FILE" | cut -f1) |"
+            echo ""
+            echo "Установка обновления выполняется поверх предыдущей версии без потери прогресса."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Загрузка APK как артефакта
+        uses: actions/upload-artifact@v4
+        with:
+          name: garvard-justice-course-${{ env.VERSION_NAME }}
+          path: |
+            ${{ env.APP_FILE }}
+            ${{ env.APP_FILE }}.sha256
+          retention-days: 90
+
+      - name: Публикация GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: "Гарвард: Справедливость — ${{ env.VERSION_NAME }}"
+          make_latest: true
+          generate_release_notes: false
+          body: |
+            ## 📱 Гарвард: Справедливость — курс лекций
+
+            **Версия:** `${{ env.VERSION_NAME }}` · **versionCode:** `${{ env.VERSION_CODE }}`
+
+            Приложение содержит 12 лекций курса, 10 моральных дилемм, галерею мыслителей и словарь терминов — всё работает офлайн.
+
+            ### 🔐 Подпись
+            APK подписан **постоянным ключом проекта** (`signing/garvard-release-key.jks`).
+            SHA-256 сертификата: `14:6C:D7:AF:A4:35:F8:E9:3C:05:EA:1F:92:3F:DC:F1:14:05:31:BF:9F:A8:A5:DA:68:D6:74:7F:8A:E1:94:D8`
+
+            ### ⬆️ Обновление «поверх»
+            Скачайте `garvard-justice-course.apk` и установите — новая версия встанет поверх старой **с сохранением прогресса чтения и результатов тестов**, поскольку `applicationId` и сертификат не меняются, а `versionCode` каждой сборки больше предыдущего.
+
+            > Приложение не является официальной публикацией Гарвардского университета: это учебный курс по мотивам лекций профессора Майкла Сэндела.
+          files: |
+            ${{ env.APP_FILE }}
+            ${{ env.APP_FILE }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Скачанный APK обновления лежит в приватной папке приложения -->
+    <external-files-path name="updates_external" path="updates/" />
+    <files-path name="updates_internal" path="updates/" />
+    <cache-path name="cache" path="." />
+</paths>
