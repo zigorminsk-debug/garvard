@@ -20,9 +20,25 @@ class CourseDataTest {
     }
 
     @Test
-    fun courseHasTwelveLectures() {
+    fun courseHasAllLectures() {
         val lectures = json.getJSONArray("lectures")
-        assertEquals(12, lectures.length())
+        assertTrue("Лекций должно быть не меньше 14", lectures.length() >= 14)
+        // Нумерация строго по порядку: 1..N без пропусков
+        for (i in 0 until lectures.length()) {
+            assertEquals(i + 1, lectures.getJSONObject(i).getInt("id"))
+        }
+    }
+
+    @Test
+    fun courseCoversChoiceAndRedistribution() {
+        val titles = buildString {
+            val lectures = json.getJSONArray("lectures")
+            for (i in 0 until lectures.length()) {
+                append(lectures.getJSONObject(i).getString("title")).append('\n')
+            }
+        }
+        assertTrue("Нет лекции о праве выбора", titles.contains("Право выбора"))
+        assertTrue("Нет лекции о перераспределении", titles.contains("Перераспределение"))
     }
 
     @Test

@@ -14,10 +14,21 @@ import os
 
 from part1_lectures import LECTURES_PART1
 from part2_lectures import LECTURES_PART2
-from extras_data import DILEMMAS, PHILOSOPHERS, GLOSSARY
+from part3_lectures import (
+    LECTURES_PART3,
+    DILEMMAS_PART3,
+    PHILOSOPHERS_PART3,
+    GLOSSARY_PART3,
+)
+from extras_data import DILEMMAS as DILEMMAS_BASE
+from extras_data import PHILOSOPHERS as PHILOSOPHERS_BASE
+from extras_data import GLOSSARY as GLOSSARY_BASE
 
 def main():
-    lectures = LECTURES_PART1 + LECTURES_PART2
+    lectures = LECTURES_PART1 + LECTURES_PART2 + LECTURES_PART3
+    dilemmas = DILEMMAS_BASE + DILEMMAS_PART3
+    philosophers = PHILOSOPHERS_BASE + PHILOSOPHERS_PART3
+    glossary = GLOSSARY_BASE + GLOSSARY_PART3
     os.makedirs("course", exist_ok=True)
     os.makedirs("app/src/main/assets", exist_ok=True)
 
@@ -42,7 +53,7 @@ def main():
         "",
         "---",
         "",
-        "## Программа курса (12 лекций)",
+        f"## Программа курса ({len(lectures)} лекций)",
         ""
     ]
 
@@ -148,7 +159,7 @@ def main():
 
     # Append Philosophers and Glossary to the full book
     full_book_lines.append("# Приложение А. Галерея философов курса\n")
-    for p in PHILOSOPHERS:
+    for p in philosophers:
         full_book_lines.append(f"## {p['name']} ({p['years']})")
         full_book_lines.append(f"- **Школа мысли:** {p['school']}")
         full_book_lines.append(f"- **Главный труд:** *{p['mainWork']}*")
@@ -157,7 +168,7 @@ def main():
         full_book_lines.append(f"**Уязвимое место / критика:** {p['critique']}\n")
 
     full_book_lines.append("\n---\n# Приложение Б. Философский словарь курса\n")
-    for g in GLOSSARY:
+    for g in glossary:
         full_book_lines.append(f"### {g['term']} (*{g['origin']}*)")
         full_book_lines.append(f"{g['definition']}\n")
 
@@ -171,15 +182,18 @@ def main():
         "university": "Harvard University • Moral Reasoning 22 (ER22)",
         "professor": "Профессор Майкл Сэндел (Michael J. Sandel)",
         "lectures": lectures,
-        "dilemmas": DILEMMAS,
-        "philosophers": PHILOSOPHERS,
-        "glossary": GLOSSARY
+        "dilemmas": dilemmas,
+        "philosophers": philosophers,
+        "glossary": glossary
     }
 
     with open("app/src/main/assets/course_data.json", "w", encoding="utf-8") as f:
         json.dump(course_json, f, ensure_ascii=False, indent=2)
 
-    print(f"Successfully generated {len(lectures)} lectures, {len(DILEMMAS)} dilemmas, {len(PHILOSOPHERS)} philosophers, {len(GLOSSARY)} glossary terms.")
+    print(
+        f"Successfully generated {len(lectures)} lectures, {len(dilemmas)} dilemmas, "
+        f"{len(philosophers)} philosophers, {len(glossary)} glossary terms."
+    )
 
 if __name__ == "__main__":
     main()

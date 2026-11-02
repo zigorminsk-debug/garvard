@@ -252,7 +252,7 @@
     <div class="seal">HJ</div>
     <div class="titles">
       <h1 id="hTitle">Гарвард: Справедливость</h1>
-      <div class="sub" id="hSub">Курс лекций · 12 лекций</div>
+      <div class="sub" id="hSub">Курс лекций</div>
     </div>
     <button class="back icon" id="themeBtn" onclick="toggleTheme()" title="Сменить тему">◐</button>
   </div>
@@ -523,7 +523,7 @@ function go(tab, opts){
   });
   document.getElementById('backBtn').classList.add('hidden');
   document.getElementById('hTitle').textContent = 'Гарвард: Справедливость';
-  document.getElementById('hSub').textContent = 'Курс лекций · 12 лекций';
+  document.getElementById('hSub').textContent = 'Курс лекций · ' + DATA.lectures.length + ' лекций';
   if(!opts.keepScroll) window.scrollTo(0,0);
   if(tab==='home') renderHome();
   else if(tab==='dilemmas') renderDilemmas();
@@ -576,7 +576,7 @@ function renderHome(){
   var qs = quizScore();
   var html = '';
   html += '<div class="card">';
-  html += '<div class="eyebrow">' + esc(DATA.university) + '</div>';
+  html += '<div class="eyebrow">' + esc(DATA.university) + ' · ' + DATA.lectures.length + ' лекций</div>';
   html += '<div class="hero-quote">«Справедливость — это не только вопрос о том, как правильно распределять вещи; это также вопрос о том, как правильно их ценить».</div>';
   html += '<p class="muted" style="margin-top:10px">' + esc(DATA.courseSubtitle) + '</p>';
   html += '<div class="divider"></div>';
@@ -863,7 +863,7 @@ function renderAbout(){
   html += '<div class="card">';
   html += '<div class="eyebrow">О курсе</div>';
   html += '<h3 style="margin:0 0 8px">По мотивам лекций Майкла Сэндела</h3>';
-  html += '<p style="font-size:14.5px;color:var(--ink-2)">Этот курс — авторское учебное изложение двенадцати лекций легендарного гарвардского курса «Justice» (Moral Reasoning 22) профессора Майкла Дж. Сэндела. Материалы охватывают утилитаризм, либертарианство, категорическую этику Канта, теорию справедливости Ролза, аристотелевскую телеологию и политику общего блага.</p>';
+  html += '<p style="font-size:14.5px;color:var(--ink-2)">Этот курс — авторское учебное изложение ' + DATA.lectures.length + ' лекций по мотивам легендарного гарвардского курса «Justice» (Moral Reasoning 22) профессора Майкла Дж. Сэндела. Материалы охватывают утилитаризм, либертарианство, категорическую этику Канта, теорию справедливости Ролза, аристотелевскую телеологию, политику общего блага, а также право выбора (автономия, тело, эвтаназия) и перераспределение средств (налоги, неравенство, базовый доход).</p>';
   html += '<p style="font-size:13px;color:var(--muted)">Курс не является официальной публикацией Гарвардского университета и создан в образовательных целях.</p>';
   html += '</div>';
 
@@ -894,12 +894,20 @@ function renderAbout(){
 
   html += '<div class="card"><div class="eyebrow">Подпись сборки</div>';
   html += '<p style="font-size:13.5px;color:var(--ink-2);margin:0">Все версии подписаны постоянным ключом проекта, поэтому новая версия устанавливается поверх старой с сохранением прогресса.</p>';
-  html += '<p style="font-size:12.5px;color:var(--muted);margin-top:8px">SHA-256 сертификата:<br><code>' + esc((window.Android && Android.signature()) || '—') + '</code></p>';
+  html += '<p style="font-size:12.5px;color:var(--muted);margin-top:8px">SHA-256 сертификата:<br><code>' + esc(signatureText()) + '</code></p>';
   html += '</div>';
 
   html += '<p class="muted" style="text-align:center;font-size:12px;margin-top:18px">Исходный код и сборки: github.com/zigorminsk-debug/garvard</p>';
   document.getElementById('app').innerHTML = html;
   loadVersion();
+}
+
+/** Отпечаток сертификата из Android-моста (безопасно, если моста нет). */
+function signatureText(){
+  try{
+    if(window.Android && typeof Android.signature === 'function') return Android.signature() || '—';
+  }catch(e){}
+  return 'доступен в Android-приложении';
 }
 
 function loadVersion(){
